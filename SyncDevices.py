@@ -10,6 +10,7 @@ unms_api_password = config.get('UNMS', 'unms_api_password')
 snipeit_url = config.get('SnipeIT', 'snipeit_url')
 snipeit_api_key = config.get('SnipeIT', 'snipeit_api_key')
 snipeit_new_asset_label = config.get('SnipeIT', 'snipeit_new_asset_label')
+snipeit_query_limit = config.get('SnipeIT', 'snipeit_query_limit')
 
 #UNMS Authentication
 data = """{ \"password\": \"""" + unms_api_password + """\", \"username\": \"""" + unms_api_user + """\", \"sessionTimeout\": 3600000}"""
@@ -20,18 +21,19 @@ unms_headers = {'x-auth-token': returned_header.headers['x-auth-token']}
 snipeit_headers = {"Authorization": "Bearer " + snipeit_api_key, "Accept": "application/json"}
 
 #Get List of Devices from UNMS
-unms_devices_raw = requests.get(unms_url + '/v2.1/devices', headers=unms_headers).json()
+print("gathering data from UNMS...")
+unms_devices = requests.get(unms_url + '/v2.1/devices', headers=unms_headers).json()
 
 #Get List of Devices from SnipeIT
-snipeit_assets = requests.get(snipeit_url + '/api/v1/hardware', headers=snipeit_headers).json()['rows']
+print("gathering data from Snipe-IT...")
+snipeit_assets = requests.get(snipeit_url + '/api/v1/hardware', headers=snipeit_headers, params={'limit': snipeit_query_limit}).json()['rows']
 snipeit_serial_numbers = []
 for asset in snipeit_assets:
     snipeit_serial_numbers.append(asset['serial'])
 
-print(snipeit_serial_numbers)
 #Remove Existing Device
 new_unms_devices = []
-new_unms_devices[:] = [d for d in unms_devices_raw if d['identification']['mac'] not in snipeit_serial_numbers]
+new_unms_devices[:] = [d for d in unms_devices if d['identification']['mac'] not in snipeit_serial_numbers]
 
 #Get List of Models from SnipeIT
 snipeit_models = requests.get(snipeit_url + '/api/v1/models', headers=snipeit_headers).json()['rows']
@@ -41,10 +43,7 @@ for model in snipeit_models:
 
 #Make List of New UNMS Models
 unms_models = new_unms_devices
-new_unms_models = []
-new_unms_models[:] = [d for d in unms_models if d['identification']['model'] not in snipeit_model_numbers]
-
-print(new_unms_models)
+new_unms_models = [model for model in unms_models if model['identification']['model'] not in snipeit_model_numbers]
 
 #Prep New Models List for Post
 new_models_with_duplicates = []
@@ -60,18 +59,21 @@ for model in new_unms_models:
 new_models = [dict(tupled) for tupled in set(tuple(model.items()) for model in new_models_with_duplicates)]
 
 #Post New Models to SnipeIT
+print("syncing models...")
 for model in new_models:
     response = requests.post(snipeit_url + '/api/v1/models', data=model, headers=snipeit_headers)
     print('Model "' + model['name'] + '" Adding')
     print(response)
+print("models synced")
 
 #Get List of Existing Assets Tags & Determine Next Available Asset Tag
+print("getting next available asset tag...")
 highest_asset_tag = 0
 for asset in snipeit_assets:
     if int(asset['asset_tag']) >= highest_asset_tag:
         highest_asset_tag = int(asset['asset_tag'])
 next_asset_tag = highest_asset_tag + 1
-print("Next Available Asset Tag is " + str(next_asset_tag))
+print("next available asset tag is " + str(next_asset_tag))
 
 #Get Status Labels from SnipeIT and Collect Label for New Assets
 snipeit_raw_labels = requests.get(snipeit_url + '/api/v1/statuslabels', headers=snipeit_headers).json()
@@ -84,13 +86,11 @@ for label in snipeit_labels:
 #Get Updated Models List from SnipeIT
 snipeit_updated_models = requests.get(snipeit_url + '/api/v1/models', headers=snipeit_headers).json()['rows']
 
-print(snipeit_updated_models)
 #Add Model ID to New Devices
 for device in new_unms_devices:
     for model in snipeit_updated_models:
         if device['identification']['modelName'] == model['name']:
             device['model_id'] = model['id']
-            print(device)
             break
         else:
             continue
@@ -109,10 +109,9 @@ for device in new_unms_devices:
     new_assets.append(new_asset)
     next_asset_tag += 1
 
-
-
 #Post New Assets to SnipeIT
+print("syncing assets...")
 for asset in new_assets:
     response = requests.post(snipeit_url + '/api/v1/hardware', data=asset, headers=snipeit_headers)
-    print('Asset "' + asset['name'] + ': ' + asset['serial'] + '" Adding')
-    print(response)
+    print('asset "' + asset['name'] + ': ' + asset['serial'] + '" syncing')
+print("assets synced")
