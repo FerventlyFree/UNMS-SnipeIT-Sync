@@ -22,10 +22,7 @@ snipeit_headers = {"Authorization": "Bearer " + snipeit_api_key, "Accept": "appl
 unms_sites = requests.get(unms_url + '/v2.1/sites', headers=unms_headers).json()
 
 #Get Sites from SnipeIT
-snipeit_locations_raw = requests.get(snipeit_url + '/api/v1/locations', headers=snipeit_headers).json()
-snipeit_locations =snipeit_locations_raw['rows']
-
-sjenkins@Stephen-DT:~/Projects/GitHub/UNMS-SnipeIT-Sync$
+snipeit_locations = requests.get(snipeit_url + '/api/v1/locations', headers=snipeit_headers).json()['rows']
 
 #Remove Existing Sites
 for site in unms_sites:
